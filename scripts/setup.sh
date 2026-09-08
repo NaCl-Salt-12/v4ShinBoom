@@ -17,7 +17,9 @@
 #   ./scripts/setup_ros2_package.sh [options]
 #
 # Options:
-#   -y, --yes           Non-interactive: assume "yes" to all prompts
+#   -y, --yes           Non-interactive: assume "yes" to prompts (does NOT
+#                        auto-enable systemd — that's always asked separately,
+#                        see --systemd/--no-systemd)
 #   --no-systemd        Skip the systemd boot-service step entirely
 #   --systemd           Force-create the systemd boot-service (no prompt)
 #   -h, --help          Show this help text
@@ -94,6 +96,20 @@ confirm() {
   [[ "$reply" =~ ^[Yy]$ ]]
 }
 
+ask() {
+  # ask "question" -> 0 (yes) / 1 (no)
+  # Always reads from the terminal, ignoring --yes. Used for consequential,
+  # hard-to-reverse choices (like installing a boot-time service) that
+  # shouldn't be silently opted into by a blanket --yes flag.
+  local prompt="$1"
+  if [[ ! -t 0 ]]; then
+    warn "${prompt} -- no terminal attached to answer; defaulting to No. Use --systemd to force this on."
+    return 1
+  fi
+  read -r -p "$(echo -e "${C_YEL}[setup]${C_RESET} ${prompt} [y/N] ")" reply
+  [[ "$reply" =~ ^[Yy]$ ]]
+}
+
 # ---------------------------------------------------------------------------
 # 1. Detect ROS2 distro + install location
 # ---------------------------------------------------------------------------
@@ -124,8 +140,13 @@ detect_ros2() {
   ROS2_SETUP_BASH="${ROS2_INSTALL_DIR}/setup.bash"
   [[ -f "${ROS2_SETUP_BASH}" ]] || die "Missing ${ROS2_SETUP_BASH}"
 
+  # ROS2's setup.bash references internal vars (e.g. AMENT_TRACE_SETUP_FILES)
+  # that aren't always pre-set, which trips `set -u`. Relax nounset just for
+  # the sourcing, then restore it.
+  set +u
   # shellcheck disable=SC1090
   source "${ROS2_SETUP_BASH}"
+  set -u
   command -v ros2 >/dev/null 2>&1 || die "ros2 CLI not found on PATH after sourcing setup.bash"
 
   ok "ROS2 distro:   ${ROS2_DISTRO}"
@@ -230,11 +251,13 @@ build_workspace() {
 
   # Explicitly point build/install/log at the workspace root so this can
   # never accidentally nest itself under src/, regardless of cwd.
-  colcon build \
+  # NOTE: --log-base is a GLOBAL colcon option and must come before the
+  # `build` verb; --build-base/--install-base/--base-paths are `build`
+  # subcommand options and go after it.
+  colcon --log-base "${LOG_DIR}" build \
     --base-paths "${WORKSPACE_DIR}" \
     --build-base "${BUILD_DIR}" \
     --install-base "${INSTALL_DIR}" \
-    --log-base "${LOG_DIR}" \
     --symlink-install
 
   [[ -f "${INSTALL_DIR}/setup.bash" ]] || die "Build finished but ${INSTALL_DIR}/setup.bash was not produced."
@@ -277,8 +300,12 @@ set -euo pipefail
 
 WORKSPACE_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
 
+# ROS2 setup files reference vars that aren't always pre-set; relax nounset
+# just for sourcing them.
+set +u
 source "/opt/ros/${ROS2_DISTRO}/setup.bash"
 source "\${WORKSPACE_DIR}/install/setup.bash"
+set -u
 
 exec ros2 launch ${launch_pkg} ${launch_name}
 EOF
@@ -299,7 +326,7 @@ setup_systemd() {
   }
 
   if [[ "$SYSTEMD_MODE" == "prompt" ]]; then
-    confirm "Create a systemd service to run launch.sh automatically on boot?" || {
+    ask "Create a systemd service to run launch.sh automatically on boot?" || {
       log "Skipping systemd setup."
       return
     }
