@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>main_ctrl</name>
+  <version>0.1.0</version>
+  <description>
+    Main teleop/control loop node for the robot. Subscribes to joystick
+    input and translates it into ODrive (hip/knee) control messages and
+    AK-V3 (wheel) motor commands.
+  </description>
+  <maintainer email="you@example.com">your_name</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <!-- Custom interfaces package providing BoomWheelCmds.msg -->
+  <!-- ODrive ROS2 driver (odrive_can), provides ODriveStatus/ControlMessage/
+       ControllerStatus msgs and the AxisState service -->
+  <exec_depend>odrive_can</exec_depend>
+  <!-- CubeMars AK-V3 driver, provides MotorCommand/MotorState msgs -->
+  <exec_depend>ak_v3_driver</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
